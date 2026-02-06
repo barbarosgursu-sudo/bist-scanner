@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
-from contextlib import async_contextmanager
+from contextlib import asynccontextmanager
 
 # Loglama Ayarları
 logging.basicConfig(
@@ -16,22 +16,22 @@ def check_time_window():
     now = datetime.now()
     current_hour = now.hour
     
-    # 10:00 - 11:00 arası kontrolü
+    # 10:00 - 11:00 arası kontrolü (Türkiye Saati ile)
     if 10 <= current_hour < 11:
         logger.info(f"STATUS: active | Current Time: {now.strftime('%H:%M:%S')}")
-        # İleride veri toplama işlemleri buraya gelecek.
     else:
         logger.info(f"STATUS: inactive | Current Time: {now.strftime('%H:%M:%S')}")
 
 # APScheduler Kurulumu
 scheduler = BackgroundScheduler()
-scheduler.add_job(check_time_window, 'interval', minutes=1) # Her dakika kontrol eder
+scheduler.add_job(check_time_window, 'interval', minutes=1)
 
-@async_contextmanager
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     # Uygulama başlarken çalışır
     logger.info("Uygulama başlatılıyor...")
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
     yield
     # Uygulama kapanırken çalışır
     logger.info("Uygulama kapatılıyor...")
@@ -41,7 +41,6 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 def health_check():
-    """Railway ve monitoring servisleri için sağlık kontrolü."""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat()
