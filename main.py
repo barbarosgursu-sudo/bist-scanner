@@ -96,7 +96,7 @@ def check_time_window():
                     "price_points": len(PRICE_HISTORY)
                 }
                 
-                response = requests.post(GAS_URL, json=payload, timeout=5)
+                response = requests.post(GAS_URL, json=payload, timeout=15)
                 
                 if response.status_code == 200:
                     EXPORT_DONE = True
