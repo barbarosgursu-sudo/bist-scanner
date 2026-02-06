@@ -1,3 +1,4 @@
+import os
 import logging
 import pytz
 import yfinance as yf
@@ -9,16 +10,19 @@ from contextlib import asynccontextmanager
 
 GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lTv_ywYKV4nBDweR-oowMNu0gO89UmFee4Y2mandT7nBc/exec"
 TR_TZ = pytz.timezone('Europe/Istanbul')
-FORCE_NOW = datetime(2026, 2, 6, 10, 15, tzinfo=TR_TZ)
+BATCH_SIZE = 50
 
-FINALIZE_SENT = False
+FORCE_NOW_STR = os.getenv("FORCE_NOW")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def get_now():
-    if FORCE_NOW:
-        return FORCE_NOW
+    if FORCE_NOW_STR:
+        try:
+            return datetime.strptime(FORCE_NOW_STR, "%Y-%m-%d %H:%M").replace(tzinfo=TR_TZ)
+        except Exception as e:
+            logger.error(f"FORCE_NOW_PARSE_ERR: {e}")
     return datetime.now(TR_TZ)
 
 def get_time_bucket(dt):
@@ -27,74 +31,78 @@ def get_time_bucket(dt):
 
 def collect_job():
     now = get_now()
-    if not (10 <= now.hour < 11):
+    if not (now.hour == 10 and now.minute >= 1):
         return
 
     date_str = now.strftime("%Y-%m-%d")
     time_bucket = get_time_bucket(now)
 
     try:
-        symbols_res = requests.get(f"{GAS_BASE_URL}?action=getSymbols", timeout=10)
+        symbols_res = requests.get(f"{GAS_BASE_URL}?action=getSymbols", timeout=15)
         symbols = symbols_res.json().get("symbols", [])
+        
+        start_prices_res = requests.get(f"{GAS_BASE_URL}?action=getStartPrices&date={date_str}", timeout=15)
+        start_prices = start_prices_res.json()
     except Exception as e:
-        logger.error(f"ERR_GET_SYMBOLS | {e}")
+        logger.error(f"INIT_DATA_ERR: {e}")
         return
 
-    for symbol in symbols:
+    if not symbols:
+        return
+
+    for i in range(0, len(symbols), BATCH_SIZE):
+        batch_symbols = symbols[i:i + BATCH_SIZE]
         try:
-            ticker = yf.Ticker(symbol)
-            current_price = ticker.fast_info['last_price']
-            
-            start_price = None
-            pct = 0.0
+            data = yf.download(batch_symbols, period="1d", interval="1m", progress=False, threads=True)
+            if data.empty:
+                continue
 
-            try:
-                start_res = requests.get(
-                    f"{GAS_BASE_URL}?action=getStartPrice&date={date_str}&symbol={symbol}", 
-                    timeout=10
-                )
-                start_data = start_res.json()
-                start_price = start_data.get("start_price")
-            except Exception as e:
-                logger.warning(f"GAS_START_PRICE_FETCH_ERR | {symbol} | {e}")
+            collect_rows = []
+            new_starts_rows = []
 
-            if start_price and float(start_price) > 0:
-                start_val = float(start_price)
-                pct = ((current_price - start_val) / start_val) * 100
+            for symbol in batch_symbols:
+                try:
+                    price_val = data['Close'][symbol].iloc[-1] if len(batch_symbols) > 1 else data['Close'].iloc[-1]
+                    if price_val is None or str(price_val) == 'nan':
+                        continue
+                    
+                    current_price = float(price_val)
+                    start_price = start_prices.get(symbol)
 
-            payload = {
-                "date": date_str,
-                "symbol": symbol,
-                "time_bucket": time_bucket,
-                "price": round(current_price, 2),
-                "pct": round(pct, 2)
-            }
-            
-            requests.post(f"{GAS_BASE_URL}?action=postCollect", json=payload, timeout=10)
-            
+                    if start_price is None:
+                        new_starts_rows.append([symbol, round(current_price, 2)])
+                        pct = 0.0
+                    else:
+                        pct = ((current_price - float(start_price)) / float(start_price)) * 100
+                    
+                    collect_rows.append([symbol, round(current_price, 2), round(pct, 2)])
+                except Exception:
+                    continue
+
+            if new_starts_rows:
+                start_payload = {"date": date_str, "rows": new_starts_rows}
+                requests.post(f"{GAS_BASE_URL}?action=postStartPricesBatch", json=start_payload, timeout=20)
+                logger.info(f"START_PRICES_BATCH_SENT: {len(new_starts_rows)}")
+
+            if collect_rows:
+                collect_payload = {"date": date_str, "time_bucket": time_bucket, "rows": collect_rows}
+                requests.post(f"{GAS_BASE_URL}?action=postCollectBatch", json=collect_payload, timeout=20)
+                logger.info(f"COLLECT_BATCH_SENT: {len(collect_rows)} | {time_bucket}")
+
         except Exception as e:
-            logger.error(f"ERR_SYMBOL | {symbol} | {e}")
-            continue
+            logger.error(f"BATCH_ERR: {i} | {e}")
 
 def finalize_job():
-    global FINALIZE_SENT
     now = get_now()
-    
     if now.hour < 11:
-        return
-    
-    if FINALIZE_SENT:
         return
 
     date_str = now.strftime("%Y-%m-%d")
-    payload = {"date": date_str}
-    
     try:
-        requests.post(f"{GAS_BASE_URL}?action=postFinalize", json=payload, timeout=30)
-        FINALIZE_SENT = True
-        logger.info(f"FINALIZE_SENT | {date_str}")
+        requests.post(f"{GAS_BASE_URL}?action=postFinalize", json={"date": date_str}, timeout=30)
+        logger.info(f"FINALIZE_SENT (Idempotent): {date_str}")
     except Exception as e:
-        logger.error(f"ERR_FINALIZE | {e}")
+        logger.error(f"FINALIZE_ERR: {e}")
 
 scheduler = BackgroundScheduler(timezone=TR_TZ)
 scheduler.add_job(collect_job, 'interval', minutes=5)
@@ -115,6 +123,5 @@ def health():
     return {
         "status": "healthy",
         "tr_time": now.strftime("%H:%M:%S"),
-        "finalize_sent": FINALIZE_SENT,
-        "force_now": FORCE_NOW is not None
+        "force_now": FORCE_NOW_STR
     }
