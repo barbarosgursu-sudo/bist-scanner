@@ -1,6 +1,7 @@
 import logging
 import pytz
 import yfinance as yf
+import requests
 from datetime import datetime
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -8,15 +9,18 @@ from contextlib import asynccontextmanager
 
 # --- AYARLAR ---
 TEST_MODE = True  
+TEST_PHASE = "COLLECT"  # "COLLECT" -> 10:15 simülasyonu | "FINAL" -> 11:01 simülasyonu
 SYMBOL = "THYAO.IS"
 tr_tz = pytz.timezone('Europe/Istanbul')
+GAS_URL = "BURAYA_GAS_ENDPOINT_URL_YAZILACAK"
 
-# --- BELLEK (MEMORY) ---
+# --- BELLEK (MEMORY) / STATE ---
 START_PRICE = None
 PRICE_HISTORY = [] 
 HIT_MINUS_7 = False  
 FINAL_CANDIDATE = False 
-FINAL_CHECK_DONE = False  # Adım 5: Nihai kontrolün yapılıp yapılmadığını kilitler
+FINAL_CHECK_DONE = False  
+EXPORT_DONE = False
 
 # Loglama Ayarları
 logging.basicConfig(
@@ -26,15 +30,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def check_time_window():
-    global START_PRICE, PRICE_HISTORY, HIT_MINUS_7, FINAL_CANDIDATE, FINAL_CHECK_DONE
+    global START_PRICE, PRICE_HISTORY, HIT_MINUS_7, FINAL_CANDIDATE, FINAL_CHECK_DONE, EXPORT_DONE
     
-    # 1. ZAMAN TESPİTİ
+    # 1. ZAMAN TESPİTİ (TEST_MODE İÇİN FAZLI SİMÜLASYON)
     if TEST_MODE:
-        # Test Modu: 10:15 simülasyonu (Adım 3-4 akışı korunur)
-        now = datetime(2026, 2, 6, 10, 15, tzinfo=tr_tz)
-        logger.info("MODE: TEST")
+        if TEST_PHASE == "COLLECT":
+            now = datetime(2026, 2, 6, 10, 15, tzinfo=tr_tz)
+        elif TEST_PHASE == "FINAL":
+            now = datetime(2026, 2, 6, 11, 1, tzinfo=tr_tz)
+        logger.info(f"MODE: TEST | PHASE={TEST_PHASE}")
     else:
-        # Prod Modu: Gerçek Türkiye saati
         now = datetime.now(tr_tz)
         logger.info("MODE: PROD")
 
@@ -63,25 +68,47 @@ def check_time_window():
         except Exception as e:
             logger.error(f"Veri toplama hatası: {e}")
 
-    # 3. NİHAİ ADAY KONTROLÜ (Saat 11:00 ve sonrası - SADECE TEK SEFERLİK)
-    elif current_hour >= 11 and not FINAL_CHECK_DONE:
-        if PRICE_HISTORY and START_PRICE:
-            last_entry = PRICE_HISTORY[-1]
-            last_price = last_entry["price"]
-            last_pct = ((last_price - START_PRICE) / START_PRICE) * 100
+    # 3. NİHAİ ADAY KONTROLÜ (Saat 11:00 ve sonrası)
+    elif current_hour >= 11:
+        if not FINAL_CHECK_DONE:
+            if PRICE_HISTORY and START_PRICE:
+                last_entry = PRICE_HISTORY[-1]
+                last_price = last_entry["price"]
+                last_pct = ((last_price - START_PRICE) / START_PRICE) * 100
+                
+                if HIT_MINUS_7 and last_pct > -7:
+                    FINAL_CANDIDATE = True
+                    logger.info(f"FINAL_CANDIDATE_DETECTED | symbol={SYMBOL} | last_price={last_price:.2f} | pct={last_pct:.2f}%")
             
-            # Şartlar sağlanıyorsa aday olarak işaretle
-            if HIT_MINUS_7 and last_pct > -7:
-                FINAL_CANDIDATE = True
-                logger.info(f"FINAL_CANDIDATE_DETECTED | symbol={SYMBOL} | last_price={last_price:.2f} | pct={last_pct:.2f}%")
-        
-        # Kontrol yapıldı, artık bu blok bir daha çalışmayacak
-        FINAL_CHECK_DONE = True
-        logger.info(f"STATUS: final_check_completed | TR Saati: {now.strftime('%H:%M:%S')}")
+            FINAL_CHECK_DONE = True
+            logger.info(f"STATUS: final_check_completed | TR Saati: {now.strftime('%H:%M:%S')}")
+
+        # 4. GAS EXPORT (ADIM 10)
+        if FINAL_CHECK_DONE and not EXPORT_DONE:
+            try:
+                payload = {
+                    "date": now.strftime("%Y-%m-%d"),
+                    "symbol": SYMBOL,
+                    "start_price": START_PRICE,
+                    "hit_minus_7": HIT_MINUS_7,
+                    "final_candidate": FINAL_CANDIDATE,
+                    "last_price": PRICE_HISTORY[-1]["price"] if PRICE_HISTORY else None,
+                    "price_points": len(PRICE_HISTORY)
+                }
+                
+                response = requests.post(GAS_URL, json=payload, timeout=5)
+                
+                if response.status_code == 200:
+                    EXPORT_DONE = True
+                    logger.info("EXPORT_DONE | GAS_WRITE_OK")
+                else:
+                    logger.warning(f"EXPORT_FAILED | HTTP_{response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"EXPORT_ERROR | {e}")
     
     else:
-        # 11:00 sonrası sonraki tetiklemelerde sadece durumu bildirir
-        logger.info(f"STATUS: monitoring_ended | TR Saati: {now.strftime('%H:%M:%S')}")
+        logger.info(f"STATUS: inactive | TR Saati: {now.strftime('%H:%M:%S')}")
 
 # APScheduler Kurulumu (5 Dakika)
 scheduler = BackgroundScheduler(timezone=tr_tz)
@@ -89,7 +116,7 @@ scheduler.add_job(check_time_window, 'interval', minutes=5)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"Uygulama başlatılıyor (TEST_MODE={TEST_MODE})...")
+    logger.info(f"Uygulama başlatılıyor (TEST_MODE={TEST_MODE}, PHASE={TEST_PHASE})...")
     if not scheduler.running:
         scheduler.start()
     yield
@@ -98,15 +125,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/result")
+def get_result():
+    return {
+        "symbol": SYMBOL,
+        "start_price": START_PRICE,
+        "hit_minus_7": HIT_MINUS_7,
+        "final_candidate": FINAL_CANDIDATE,
+        "final_check_done": FINAL_CHECK_DONE,
+        "export_done": EXPORT_DONE,
+        "last_price": PRICE_HISTORY[-1]["price"] if PRICE_HISTORY else None,
+        "price_history_size": len(PRICE_HISTORY)
+    }
+
 @app.get("/health")
 def health_check():
-    return {
-        "status": "healthy", 
-        "hit_minus_7": HIT_MINUS_7, 
-        "final_candidate": FINAL_CANDIDATE,
-        "final_check_done": FINAL_CHECK_DONE
-    }
+    return {"status": "healthy", "test_mode": TEST_MODE, "phase": TEST_PHASE, "export_done": EXPORT_DONE}
 
 @app.get("/")
 def root():
-    return {"message": "T4-Scanner is running", "test_mode": TEST_MODE}
+    return {"message": "T4-Scanner Core Engine with Phase Simulation Ready."}
