@@ -7,9 +7,9 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
-GAS_BASE_URL = "BURAYA_GAS_SCRIPT_URL_YAZILACAK"
+GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lTv_ywYKV4nBDweR-oowMNu0gO89UmFee4Y2mandT7nBc/exec"
 TR_TZ = pytz.timezone('Europe/Istanbul')
-FORCE_NOW = None
+FORCE_NOW = datetime(2026, 2, 6, 10, 15, tzinfo=TR_TZ)
 
 FINALIZE_SENT = False
 
