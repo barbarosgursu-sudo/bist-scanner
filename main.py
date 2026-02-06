@@ -7,9 +7,11 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
-GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lTv_ywYKV4nBDweR-oowMNu0gO89UmFee4Y2mandT7nBc/exec"
+GAS_BASE_URL = "BURAYA_GAS_SCRIPT_URL_YAZILACAK"
 TR_TZ = pytz.timezone('Europe/Istanbul')
 FORCE_NOW = None
+
+FINALIZE_SENT = False
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -57,7 +59,8 @@ def collect_job():
                 logger.warning(f"GAS_START_PRICE_FETCH_ERR | {symbol} | {e}")
 
             if start_price and float(start_price) > 0:
-                pct = ((current_price - float(start_price)) / float(start_price)) * 100
+                start_val = float(start_price)
+                pct = ((current_price - start_val) / start_val) * 100
 
             payload = {
                 "date": date_str,
@@ -67,19 +70,35 @@ def collect_job():
                 "pct": round(pct, 2)
             }
             
-            post_res = requests.post(f"{GAS_BASE_URL}?action=postCollect", json=payload, timeout=10)
-            
-            if post_res.status_code == 200:
-                msg = post_res.json().get("status")
-                if msg == "ok":
-                    logger.info(f"COLLECT_OK | {symbol} | {time_bucket} | P:{payload['price']} | %:{payload['pct']}")
+            requests.post(f"{GAS_BASE_URL}?action=postCollect", json=payload, timeout=10)
             
         except Exception as e:
             logger.error(f"ERR_SYMBOL | {symbol} | {e}")
             continue
 
+def finalize_job():
+    global FINALIZE_SENT
+    now = get_now()
+    
+    if now.hour < 11:
+        return
+    
+    if FINALIZE_SENT:
+        return
+
+    date_str = now.strftime("%Y-%m-%d")
+    payload = {"date": date_str}
+    
+    try:
+        requests.post(f"{GAS_BASE_URL}?action=postFinalize", json=payload, timeout=30)
+        FINALIZE_SENT = True
+        logger.info(f"FINALIZE_SENT | {date_str}")
+    except Exception as e:
+        logger.error(f"ERR_FINALIZE | {e}")
+
 scheduler = BackgroundScheduler(timezone=TR_TZ)
 scheduler.add_job(collect_job, 'interval', minutes=5)
+scheduler.add_job(finalize_job, 'interval', minutes=5)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,5 +115,6 @@ def health():
     return {
         "status": "healthy",
         "tr_time": now.strftime("%H:%M:%S"),
+        "finalize_sent": FINALIZE_SENT,
         "force_now": FORCE_NOW is not None
     }
