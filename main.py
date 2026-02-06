@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
 # --- AYARLAR ---
-TEST_MODE = False  # Test yapmak için True, canlı çalışma için False yapın
+TEST_MODE = True  # Test yapmak için True, canlı çalışma için False yapın
 SYMBOL = "THYAO.IS"
 tr_tz = pytz.timezone('Europe/Istanbul')
 
