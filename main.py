@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 # --- AYARLAR ---
 TEST_MODE = True  
-TEST_PHASE = "COLLECT"  # "COLLECT" -> 10:15 simülasyonu | "FINAL" -> 11:01 simülasyonu
+TEST_PHASE = "FINAL"  # "COLLECT" -> 10:15 simülasyonu | "FINAL" -> 11:01 simülasyonu
 SYMBOL = "THYAO.IS"
 tr_tz = pytz.timezone('Europe/Istanbul')
 GAS_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lTv_ywYKV4nBDweR-oowMNu0gO89UmFee4Y2mandT7nBc/exec"
