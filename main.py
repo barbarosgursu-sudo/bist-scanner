@@ -7,12 +7,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
 # --- AYARLAR ---
-TEST_MODE = True  # Test yapmak için True, canlı çalışma için False yapın
+TEST_MODE = True  
 SYMBOL = "THYAO.IS"
 tr_tz = pytz.timezone('Europe/Istanbul')
 
 # --- BELLEK (MEMORY) ---
 START_PRICE = None
+PRICE_HISTORY = [] 
 
 # Loglama Ayarları
 logging.basicConfig(
@@ -22,38 +23,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def check_time_window():
-    global START_PRICE
+    global START_PRICE, PRICE_HISTORY
     
     # 1. ZAMAN TESPİTİ
     if TEST_MODE:
-        # Test Modu: Sabit bir zaman simüle edilir (10:15)
         now = datetime(2026, 2, 6, 10, 15, tzinfo=tr_tz)
         logger.info("MODE: TEST")
     else:
-        # Prod Modu: Gerçek Türkiye saati
         now = datetime.now(tr_tz)
         logger.info("MODE: PROD")
 
     current_hour = now.hour
     
-    # 2. ANA MANTIK (ASLA DEĞİŞMEZ)
+    # 2. ANA MANTIK (10:00 - 11:00)
     if 10 <= current_hour < 11:
-        if START_PRICE is None:
-            try:
-                hisse = yf.Ticker(SYMBOL)
-                fiyat = hisse.fast_info['last_price']
-                START_PRICE = fiyat
-                logger.info(f"START_PRICE_SET | symbol={SYMBOL} | price={START_PRICE:.2f} | time={now.strftime('%H:%M')}")
-            except Exception as e:
-                logger.error(f"Başlangıç fiyatı hatası: {e}")
-        else:
-            logger.info(f"START_PRICE_ALREADY_SET | symbol={SYMBOL} | current_start_price={START_PRICE:.2f}")
+        try:
+            hisse = yf.Ticker(SYMBOL)
+            current_price = hisse.fast_info['last_price']
+            current_time = now.strftime('%H:%M')
+
+            # A) Başlangıç Fiyatı Kontrolü
+            if START_PRICE is None:
+                START_PRICE = current_price
+                logger.info(f"START_PRICE_SET | symbol={SYMBOL} | price={START_PRICE:.2f} | time={current_time}")
+
+            # B) Fiyat Biriktirme
+            data_point = {
+                "time": current_time,
+                "price": round(current_price, 2)
+            }
+            PRICE_HISTORY.append(data_point)
+            
+            logger.info(f"PRICE_COLLECTED | symbol={SYMBOL} | price={current_price:.2f} | time={current_time}")
+            logger.info(f"HISTORY_SIZE: {len(PRICE_HISTORY)}")
+            
+        except Exception as e:
+            logger.error(f"Veri toplama hatası: {e}")
     else:
         logger.info(f"STATUS: inactive | TR Saati: {now.strftime('%H:%M:%S')}")
 
-# APScheduler Kurulumu
+# APScheduler Kurulumu - 5 DAKİKA OLARAK GÜNCELLENDİ
 scheduler = BackgroundScheduler(timezone=tr_tz)
-scheduler.add_job(check_time_window, 'interval', minutes=1)
+scheduler.add_job(check_time_window, 'interval', minutes=5)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
