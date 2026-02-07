@@ -9,28 +9,40 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
 GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lTv_ywYKV4nBDweR-oowMNu0gO89UmFee4Y2mandT7nBc/exec"
-TR_TZ = pytz.timezone('Europe/Istanbul')
+TR_TZ = pytz.timezone("Europe/Istanbul")
 BATCH_SIZE = 50
 
 FORCE_NOW_STR = os.getenv("FORCE_NOW")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 def get_now():
     if FORCE_NOW_STR:
         try:
-            return datetime.strptime(FORCE_NOW_STR, "%Y-%m-%d %H:%M").replace(tzinfo=TR_TZ)
+            return datetime.strptime(
+                FORCE_NOW_STR, "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=TR_TZ)
         except Exception as e:
             logger.error(f"FORCE_NOW_PARSE_ERR: {e}")
     return datetime.now(TR_TZ)
 
+
 def get_time_bucket(dt):
     minute = (dt.minute // 5) * 5
-    return dt.replace(minute=minute, second=0, microsecond=0).strftime("%H:%M")
+    return dt.replace(
+        minute=minute, second=0, microsecond=0
+    ).strftime("%H:%M")
+
 
 def collect_job():
     now = get_now()
+
+    # Sadece 10:01–10:59
     if not (now.hour == 10 and now.minute >= 1):
         return
 
@@ -38,10 +50,16 @@ def collect_job():
     time_bucket = get_time_bucket(now)
 
     try:
-        symbols_res = requests.get(f"{GAS_BASE_URL}?action=getSymbols", timeout=15)
+        symbols_res = requests.get(
+            f"{GAS_BASE_URL}?action=getSymbols",
+            timeout=15
+        )
         symbols = symbols_res.json().get("symbols", [])
-        
-        start_prices_res = requests.get(f"{GAS_BASE_URL}?action=getStartPrices&date={date_str}", timeout=15)
+
+        start_prices_res = requests.get(
+            f"{GAS_BASE_URL}?action=getStartPrices&date={date_str}",
+            timeout=15
+        )
         start_prices = start_prices_res.json()
     except Exception as e:
         logger.error(f"INIT_DATA_ERR: {e}")
@@ -52,8 +70,16 @@ def collect_job():
 
     for i in range(0, len(symbols), BATCH_SIZE):
         batch_symbols = symbols[i:i + BATCH_SIZE]
+
         try:
-            data = yf.download(batch_symbols, period="1d", interval="1m", progress=False, threads=True)
+            data = yf.download(
+                batch_symbols,
+                period="1d",
+                interval="1m",
+                progress=False,
+                threads=True
+            )
+
             if data.empty:
                 continue
 
@@ -62,51 +88,95 @@ def collect_job():
 
             for symbol in batch_symbols:
                 try:
-                    price_val = data['Close'][symbol].iloc[-1] if len(batch_symbols) > 1 else data['Close'].iloc[-1]
-                    if price_val is None or str(price_val) == 'nan':
+                    if len(batch_symbols) > 1:
+                        price_val = data["Close"][symbol].iloc[-1]
+                    else:
+                        price_val = data["Close"].iloc[-1]
+
+                    if price_val is None or str(price_val) == "nan":
                         continue
-                    
+
                     current_price = float(price_val)
                     start_price = start_prices.get(symbol)
 
                     if start_price is None:
-                        new_starts_rows.append([symbol, round(current_price, 2)])
+                        # İlk kez görülüyor → GAS’a yazmayı dene
+                        new_starts_rows.append([
+                            symbol,
+                            round(current_price, 2)
+                        ])
                         pct = 0.0
                     else:
-                        pct = ((current_price - float(start_price)) / float(start_price)) * 100
-                    
-                    collect_rows.append([symbol, round(current_price, 2), round(pct, 2)])
+                        pct = (
+                            (current_price - float(start_price))
+                            / float(start_price)
+                        ) * 100
+
+                    collect_rows.append([
+                        symbol,
+                        round(current_price, 2),
+                        round(pct, 2)
+                    ])
+
                 except Exception:
                     continue
 
             if new_starts_rows:
-                start_payload = {"date": date_str, "rows": new_starts_rows}
-                requests.post(f"{GAS_BASE_URL}?action=postStartPricesBatch", json=start_payload, timeout=20)
-                logger.info(f"START_PRICES_BATCH_SENT: {len(new_starts_rows)}")
+                start_payload = {
+                    "date": date_str,
+                    "rows": new_starts_rows
+                }
+                requests.post(
+                    f"{GAS_BASE_URL}?action=postStartPricesBatch",
+                    json=start_payload,
+                    timeout=20
+                )
+                logger.info(
+                    f"START_PRICES_BATCH_SENT: {len(new_starts_rows)}"
+                )
 
             if collect_rows:
-                collect_payload = {"date": date_str, "time_bucket": time_bucket, "rows": collect_rows}
-                requests.post(f"{GAS_BASE_URL}?action=postCollectBatch", json=collect_payload, timeout=20)
-                logger.info(f"COLLECT_BATCH_SENT: {len(collect_rows)} | {time_bucket}")
+                collect_payload = {
+                    "date": date_str,
+                    "time_bucket": time_bucket,
+                    "rows": collect_rows
+                }
+                requests.post(
+                    f"{GAS_BASE_URL}?action=postCollectBatch",
+                    json=collect_payload,
+                    timeout=20
+                )
+                logger.info(
+                    f"COLLECT_BATCH_SENT: {len(collect_rows)} | {time_bucket}"
+                )
 
         except Exception as e:
             logger.error(f"BATCH_ERR: {i} | {e}")
 
+
 def finalize_job():
     now = get_now()
+
     if now.hour < 11:
         return
 
     date_str = now.strftime("%Y-%m-%d")
+
     try:
-        requests.post(f"{GAS_BASE_URL}?action=postFinalize", json={"date": date_str}, timeout=30)
+        requests.post(
+            f"{GAS_BASE_URL}?action=postFinalize",
+            json={"date": date_str},
+            timeout=30
+        )
         logger.info(f"FINALIZE_SENT (Idempotent): {date_str}")
     except Exception as e:
         logger.error(f"FINALIZE_ERR: {e}")
 
+
 scheduler = BackgroundScheduler(timezone=TR_TZ)
-scheduler.add_job(collect_job, 'interval', minutes=5)
-scheduler.add_job(finalize_job, 'interval', minutes=5)
+scheduler.add_job(collect_job, "interval", minutes=5)
+scheduler.add_job(finalize_job, "interval", minutes=5)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -115,7 +185,9 @@ async def lifespan(app: FastAPI):
     yield
     scheduler.shutdown()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 @app.get("/health")
 def health():
