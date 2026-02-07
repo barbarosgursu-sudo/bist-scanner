@@ -43,7 +43,7 @@ def collect_job():
     now = get_now()
 
     # Sadece 10:01–10:59
-    if not (now.hour == 10 and now.minute >= 1):
+    if not (now.hour == 10 and 1 <= now.minute <= 59):
         return
 
     date_str = now.strftime("%Y-%m-%d")
