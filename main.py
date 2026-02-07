@@ -12,8 +12,6 @@ GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwa_Zxh9FWpMPG-Vr8oKq7lT
 TR_TZ = pytz.timezone("Europe/Istanbul")
 BATCH_SIZE = 50
 
-FORCE_NOW_STR = os.getenv("FORCE_NOW")
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
@@ -21,22 +19,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def get_force_now_str():
+    # FORCE_NOW'u her çağrıda oku (restart testi + env değişimi için net davranış)
+    return os.getenv("FORCE_NOW")
+
+
 def get_now():
-    if FORCE_NOW_STR:
+    force_now = get_force_now_str()
+    if force_now:
         try:
-            return datetime.strptime(
-                FORCE_NOW_STR, "%Y-%m-%d %H:%M"
-            ).replace(tzinfo=TR_TZ)
+            naive = datetime.strptime(force_now, "%Y-%m-%d %H:%M")
+            # Doğru timezone bağla
+            return TR_TZ.localize(naive)
         except Exception as e:
-            logger.error(f"FORCE_NOW_PARSE_ERR: {e}")
+            logger.error(f"FORCE_NOW_PARSE_ERR: {e} | value={force_now}")
     return datetime.now(TR_TZ)
 
 
 def get_time_bucket(dt):
     minute = (dt.minute // 5) * 5
-    return dt.replace(
-        minute=minute, second=0, microsecond=0
-    ).strftime("%H:%M")
+    return dt.replace(minute=minute, second=0, microsecond=0).strftime("%H:%M")
 
 
 def collect_job():
@@ -101,54 +103,32 @@ def collect_job():
 
                     if start_price is None:
                         # İlk kez görülüyor → GAS’a yazmayı dene
-                        new_starts_rows.append([
-                            symbol,
-                            round(current_price, 2)
-                        ])
+                        new_starts_rows.append([symbol, round(current_price, 2)])
                         pct = 0.0
                     else:
-                        pct = (
-                            (current_price - float(start_price))
-                            / float(start_price)
-                        ) * 100
+                        pct = ((current_price - float(start_price)) / float(start_price)) * 100
 
-                    collect_rows.append([
-                        symbol,
-                        round(current_price, 2),
-                        round(pct, 2)
-                    ])
-
+                    collect_rows.append([symbol, round(current_price, 2), round(pct, 2)])
                 except Exception:
                     continue
 
             if new_starts_rows:
-                start_payload = {
-                    "date": date_str,
-                    "rows": new_starts_rows
-                }
+                start_payload = {"date": date_str, "rows": new_starts_rows}
                 requests.post(
                     f"{GAS_BASE_URL}?action=postStartPricesBatch",
                     json=start_payload,
                     timeout=20
                 )
-                logger.info(
-                    f"START_PRICES_BATCH_SENT: {len(new_starts_rows)}"
-                )
+                logger.info(f"START_PRICES_BATCH_SENT: {len(new_starts_rows)}")
 
             if collect_rows:
-                collect_payload = {
-                    "date": date_str,
-                    "time_bucket": time_bucket,
-                    "rows": collect_rows
-                }
+                collect_payload = {"date": date_str, "time_bucket": time_bucket, "rows": collect_rows}
                 requests.post(
                     f"{GAS_BASE_URL}?action=postCollectBatch",
                     json=collect_payload,
                     timeout=20
                 )
-                logger.info(
-                    f"COLLECT_BATCH_SENT: {len(collect_rows)} | {time_bucket}"
-                )
+                logger.info(f"COLLECT_BATCH_SENT: {len(collect_rows)} | {time_bucket}")
 
         except Exception as e:
             logger.error(f"BATCH_ERR: {i} | {e}")
@@ -195,5 +175,6 @@ def health():
     return {
         "status": "healthy",
         "tr_time": now.strftime("%H:%M:%S"),
-        "force_now": FORCE_NOW_STR
+        "force_now": get_force_now_str()
     }
+
