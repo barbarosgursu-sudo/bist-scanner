@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
-GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwuaQiliFPUd-vDjRTFNQ_IPrdap88zb_z8GQzEE__vgO_EkhqKIe2R-gkbmbc14Izu/exec"
+GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbzk-Rt1fK2xsi_iKf85BL6LfsLnXP0MSlh_1beW0z9J0XrRp-eF6eF7-j4ROuCacnOF/exec"
 TR_TZ = pytz.timezone("Europe/Istanbul")
 BATCH_SIZE = 50
 
