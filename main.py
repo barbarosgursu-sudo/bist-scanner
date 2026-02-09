@@ -26,8 +26,11 @@ def get_force_now_str():
 def get_now():
     force_now = get_force_now_str()
     if force_now:
-        naive = datetime.strptime(force_now, "%Y-%m-%d %H:%M")
-        return TR_TZ.localize(naive)
+        try:
+            naive = datetime.strptime(force_now, "%Y-%m-%d %H:%M")
+            return TR_TZ.localize(naive)
+        except Exception as e:
+            logger.error(f"FORCE_NOW_PARSE_ERR: {e} | value={force_now}")
     return datetime.now(TR_TZ)
 
 
