@@ -3,7 +3,7 @@ import logging
 import pytz
 import yfinance as yf
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
@@ -40,7 +40,7 @@ def get_time_bucket(dt):
 
 
 # =========================
-# COLLECT (DEĞİŞMEDİ)
+# COLLECT
 # =========================
 def collect_job():
     now = get_now()
@@ -75,7 +75,7 @@ def collect_job():
         try:
             data = yf.download(
                 batch,
-                period="1d",
+                period="2m",
                 interval="1m",
                 progress=False,
                 threads=True
@@ -88,11 +88,15 @@ def collect_job():
 
             for symbol in batch:
                 try:
-                    price_val = (
-                        data["Close"][symbol].iloc[-1]
-                        if len(batch) > 1
-                        else data["Close"].iloc[-1]
-                    )
+                    if len(batch) > 1:
+                        series = data["Close"][symbol].dropna()
+                    else:
+                        series = data["Close"].dropna()
+
+                    if series.empty:
+                        continue
+
+                    price_val = series.iloc[-1]
 
                     if price_val is None or str(price_val) == "nan":
                         continue
@@ -108,6 +112,7 @@ def collect_job():
                         )
 
                     rows.append([symbol, price, pct])
+
                 except Exception:
                     continue
 
@@ -129,7 +134,7 @@ def collect_job():
 
 
 # =========================
-# OPEN FETCH (YENİ)
+# OPEN FETCH
 # =========================
 def open_fetch_job():
     now = get_now()
@@ -180,16 +185,16 @@ def open_fetch_job():
 
             for symbol in batch:
                 try:
-                    open_val = (
-                        data["Open"][symbol].iloc[0]
-                        if len(batch) > 1
-                        else data["Open"].iloc[0]
-                    )
+                    if len(batch) > 1:
+                        open_val = data["Open"][symbol].iloc[0]
+                    else:
+                        open_val = data["Open"].iloc[0]
 
                     if open_val is None or str(open_val) == "nan":
                         continue
 
                     new_rows.append([symbol, round(float(open_val), 2)])
+
                 except Exception:
                     continue
 
@@ -200,7 +205,6 @@ def open_fetch_job():
         return
 
     try:
-        # 1️⃣ Open yaz
         requests.post(
             f"{GAS_BASE_URL}?action=postStartPricesBatch",
             json={"date": date_str, "rows": new_rows},
@@ -208,7 +212,6 @@ def open_fetch_job():
         )
         logger.info(f"OPEN_BATCH_SENT: {len(new_rows)}")
 
-        # 2️⃣ Hemen backfill tetikle
         requests.post(
             f"{GAS_BASE_URL}?action=postBackfillPct",
             json={"date": date_str},
@@ -221,7 +224,7 @@ def open_fetch_job():
 
 
 # =========================
-# FINAL (DEĞİŞMEDİ)
+# FINAL
 # =========================
 def finalize_job():
     now = get_now()
