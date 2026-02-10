@@ -48,9 +48,8 @@ def get_time_bucket(dt):
 def collect_job():
     now = get_now()
     
-    # Test süresince canlı akışı görmek için 17:00-17:59 arası açık
     # Yarın gerçek kullanımda bu satırı 10:00-10:59 yapmayı unutma
-    if not (now.hour == 17 and 1 <= now.minute <= 59):
+    if not (now.hour == 10 and 1 <= now.minute <= 59):
         return
 
     date_str = now.strftime("%Y-%m-%d")
