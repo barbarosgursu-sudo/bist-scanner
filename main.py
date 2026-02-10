@@ -8,6 +8,9 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 from contextlib import asynccontextmanager
 
+# TzCache hatasını susturmak ve performansı artırmak için
+yf.set_tz_cache_location("/tmp/py-yfinance")
+
 GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwGYHsm-3umHvyP9aZv1GQV-N1-vv3I91AHVbrucgGCPv79-YTcru_7PV-4b2b80hnz/exec"
 TR_TZ = pytz.timezone("Europe/Istanbul")
 BATCH_SIZE = 50
@@ -40,12 +43,12 @@ def get_time_bucket(dt):
 
 
 # =========================
-# COLLECT (fast_info ile)
+# COLLECT (fast_info ile - En Güncel Fiyat)
 # =========================
 def collect_job():
     now = get_now()
 
-    # test için 17:01–17:59
+    # Test süresince canlı akışı görmek için 17:00-17:59 arası açık
     if not (now.hour == 17 and 1 <= now.minute <= 59):
         return
 
@@ -73,26 +76,25 @@ def collect_job():
         batch = symbols[i:i + BATCH_SIZE]
 
         try:
-            tickers = yf.Tickers(" ".join(batch))
+            # Tickers nesnesi ile toplu meta veri bağlantısı kuruyoruz (Hızlı)
+            tickers_obj = yf.Tickers(" ".join(batch))
             rows = []
 
             for symbol in batch:
                 try:
-                    ticker = tickers.tickers.get(symbol)
+                    ticker = tickers_obj.tickers.get(symbol)
                     if not ticker:
                         continue
 
-                    info = ticker.fast_info
-                    if not info:
-                        continue
-
-                    price_val = info.get("lastPrice")
-                    if price_val is None:
+                    # fast_info bar indirmez, o anki 'lastPrice' değerini döner
+                    price_val = ticker.fast_info.get("lastPrice")
+                    
+                    if price_val is None or str(price_val) == "nan":
                         continue
 
                     price = round(float(price_val), 2)
-
                     open_price = start_prices.get(symbol)
+
                     pct = None
                     if open_price is not None:
                         pct = round(
@@ -123,12 +125,11 @@ def collect_job():
 
 
 # =========================
-# OPEN FETCH (AYNI)
+# OPEN FETCH
 # =========================
 def open_fetch_job():
     now = get_now()
 
-    # 10:00–10:59
     if not (now.hour == 10 and 0 <= now.minute <= 59):
         return
 
@@ -159,7 +160,6 @@ def open_fetch_job():
 
     for i in range(0, len(missing), BATCH_SIZE):
         batch = missing[i:i + BATCH_SIZE]
-
         try:
             data = yf.download(
                 batch,
@@ -183,10 +183,8 @@ def open_fetch_job():
                         continue
 
                     new_rows.append([symbol, round(float(open_val), 2)])
-
                 except Exception:
                     continue
-
         except Exception as e:
             logger.error(f"OPEN_BATCH_ERR: {e}")
 
@@ -207,13 +205,12 @@ def open_fetch_job():
             timeout=20
         )
         logger.info("BACKFILL_TRIGGERED")
-
     except Exception as e:
         logger.error(f"OPEN_POST_ERR: {e}")
 
 
 # =========================
-# FINAL (AYNI)
+# FINAL
 # =========================
 def finalize_job():
     now = get_now()
@@ -234,7 +231,7 @@ def finalize_job():
 
 
 # =========================
-# SCHEDULER (AYNI)
+# SCHEDULER
 # =========================
 scheduler = BackgroundScheduler(timezone=TR_TZ)
 scheduler.add_job(collect_job, "interval", minutes=5)
