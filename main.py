@@ -47,8 +47,9 @@ def get_time_bucket(dt):
 # =========================
 def collect_job():
     now = get_now()
-
+    
     # Test süresince canlı akışı görmek için 17:00-17:59 arası açık
+    # Yarın gerçek kullanımda bu satırı 10:00-10:59 yapmayı unutma
     if not (now.hour == 17 and 1 <= now.minute <= 59):
         return
 
@@ -70,13 +71,14 @@ def collect_job():
         return
 
     if not symbols:
+        logger.warning("No symbols found from GAS")
         return
 
     for i in range(0, len(symbols), BATCH_SIZE):
         batch = symbols[i:i + BATCH_SIZE]
 
         try:
-            # Tickers nesnesi ile toplu meta veri bağlantısı kuruyoruz (Hızlı)
+            # Tickers nesnesi ile toplu meta veri bağlantısı (Çok hızlıdır)
             tickers_obj = yf.Tickers(" ".join(batch))
             rows = []
 
@@ -86,7 +88,7 @@ def collect_job():
                     if not ticker:
                         continue
 
-                    # fast_info bar indirmez, o anki 'lastPrice' değerini döner
+                    # fast_info o anki son fiyatı (lastPrice) bar indirmeden verir
                     price_val = ticker.fast_info.get("lastPrice")
                     
                     if price_val is None or str(price_val) == "nan":
@@ -104,7 +106,9 @@ def collect_job():
 
                     rows.append([symbol, price, pct])
 
-                except Exception:
+                except Exception as inner_e:
+                    # Tekil sembol hatalarını logla ama döngüyü bozma
+                    logger.debug(f"Error fetching {symbol}: {inner_e}")
                     continue
 
             if rows:
@@ -113,12 +117,14 @@ def collect_job():
                     "time_bucket": time_bucket,
                     "rows": rows
                 }
-                requests.post(
+                response = requests.post(
                     f"{GAS_BASE_URL}?action=postCollectBatch",
                     json=payload,
                     timeout=20
                 )
-                logger.info(f"COLLECT_BATCH_SENT: {len(rows)} | {time_bucket}")
+                logger.info(f"COLLECT_BATCH_SENT: {len(rows)} | {time_bucket} | Status: {response.status_code}")
+            else:
+                logger.warning(f"Batch {i//BATCH_SIZE + 1} produced no valid rows")
 
         except Exception as e:
             logger.error(f"BATCH_ERR: {i} | {e}")
@@ -214,6 +220,7 @@ def open_fetch_job():
 # =========================
 def finalize_job():
     now = get_now()
+    # Günü kapatma kontrolü
     if now.hour < 11:
         return
 
