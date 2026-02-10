@@ -40,13 +40,13 @@ def get_time_bucket(dt):
 
 
 # =========================
-# COLLECT
+# COLLECT (fast_info ile)
 # =========================
 def collect_job():
     now = get_now()
 
-    # 10:01–10:59
-    if not (now.hour == 16 and 1 <= now.minute <= 59):
+    # test için 17:01–17:59
+    if not (now.hour == 17 and 1 <= now.minute <= 59):
         return
 
     date_str = now.strftime("%Y-%m-%d")
@@ -73,37 +73,26 @@ def collect_job():
         batch = symbols[i:i + BATCH_SIZE]
 
         try:
-            data = yf.download(
-                batch,
-                period="2m",
-                interval="1m",
-                progress=False,
-                threads=True
-            )
-
-            if data.empty:
-                continue
-
+            tickers = yf.Tickers(" ".join(batch))
             rows = []
 
             for symbol in batch:
                 try:
-                    if len(batch) > 1:
-                        series = data["Close"][symbol].dropna()
-                    else:
-                        series = data["Close"].dropna()
-
-                    if series.empty:
+                    ticker = tickers.tickers.get(symbol)
+                    if not ticker:
                         continue
 
-                    price_val = series.iloc[-1]
+                    info = ticker.fast_info
+                    if not info:
+                        continue
 
-                    if price_val is None or str(price_val) == "nan":
+                    price_val = info.get("lastPrice")
+                    if price_val is None:
                         continue
 
                     price = round(float(price_val), 2)
-                    open_price = start_prices.get(symbol)
 
+                    open_price = start_prices.get(symbol)
                     pct = None
                     if open_price is not None:
                         pct = round(
@@ -134,7 +123,7 @@ def collect_job():
 
 
 # =========================
-# OPEN FETCH
+# OPEN FETCH (AYNI)
 # =========================
 def open_fetch_job():
     now = get_now()
@@ -224,7 +213,7 @@ def open_fetch_job():
 
 
 # =========================
-# FINAL
+# FINAL (AYNI)
 # =========================
 def finalize_job():
     now = get_now()
@@ -245,7 +234,7 @@ def finalize_job():
 
 
 # =========================
-# SCHEDULER
+# SCHEDULER (AYNI)
 # =========================
 scheduler = BackgroundScheduler(timezone=TR_TZ)
 scheduler.add_job(collect_job, "interval", minutes=5)
