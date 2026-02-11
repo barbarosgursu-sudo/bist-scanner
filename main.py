@@ -20,10 +20,13 @@ def run_v1_locked():
             meta = ticker.history_metadata
             
             reg_open = meta.get("regularMarketOpen")
+            reg_high = meta.get("regularMarketDayHigh")  # Günün En Yükseği
+            reg_low = meta.get("regularMarketDayLow")    # Günün En Düşüğü
+            reg_price = meta.get("regularMarketPrice")   # Son Fiyat (10:45 itibariyle)
             reg_time = meta.get("regularMarketTime")
             tz_name = meta.get("exchangeTimezoneName")
 
-            # V1 KATI ŞARTLAR
+            # V1 KATI ŞARTLAR (Açılış fiyatı yoksa veya tarih yanlışsa geç)
             if reg_open is None or reg_open <= 0 or tz_name != "Europe/Istanbul":
                 print(f"SYMBOL: {symbol}\nSTATUS: WAITING_FOR_DATA_OR_CLOSED\n" + "-"*32)
                 continue
@@ -34,9 +37,12 @@ def run_v1_locked():
                 print(f"SYMBOL: {symbol}\nSTATUS: STALE_DATA (Eski Tarih: {dt_ist.date()})\n" + "-"*32)
                 continue
 
-            # BAŞARILI LOG
+            # BAŞARILI LOG (Tüm veriler tek seferde)
             print(f"SYMBOL: {symbol}")
-            print(f"OPEN: {reg_open}")
+            print(f"OPEN (Açılış): {reg_open}")
+            print(f"HIGH (En Yüksek): {reg_high}")
+            print(f"LOW (En Düşük): {reg_low}")
+            print(f"LAST (Son Fiyat): {reg_price}")
             print(f"MARKET_TIME_IST: {dt_ist.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"TIMEZONE: {tz_name}")
             print("-" * 32)
