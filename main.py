@@ -1,5 +1,5 @@
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 # --- KONFİGÜRASYON ---
@@ -7,8 +7,16 @@ TEST_SYMBOLS = ["A1CAP.IS", "A1YEN.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS"]
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 def run_v1_locked():
-    today_date = datetime.now(ISTANBUL_TZ).date()
-    print(f"\n--- BIS VALIDATION RUN: {datetime.now(ISTANBUL_TZ).strftime('%Y-%m-%d %H:%M:%S')} ---")
+    now = datetime.now(ISTANBUL_TZ)
+    today_date = now.date()
+    
+    # Bir sonraki 5 dakikalık tetiklemeyi hesapla
+    next_minute = 5 - (now.minute % 5)
+    next_trigger = (now + timedelta(minutes=next_minute)).replace(second=0, microsecond=0)
+    
+    print(f"\n--- BIS VALIDATION RUN: {now.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    print(f"BİR SONRAKİ TETİKLEME ZAMANI: {next_trigger.strftime('%H:%M:%S')}")
+    print("-" * 32)
 
     for symbol in TEST_SYMBOLS:
         try:
@@ -22,7 +30,7 @@ def run_v1_locked():
             reg_open = meta.get("regularMarketOpen")
             reg_high = meta.get("regularMarketDayHigh")  # Günün En Yükseği
             reg_low = meta.get("regularMarketDayLow")    # Günün En Düşüğü
-            reg_price = meta.get("regularMarketPrice")   # Son Fiyat (10:45 itibariyle)
+            reg_price = meta.get("regularMarketPrice")   # Son Fiyat
             reg_time = meta.get("regularMarketTime")
             tz_name = meta.get("exchangeTimezoneName")
 
