@@ -1,266 +1,50 @@
-import os
-import logging
-import pytz
 import yfinance as yf
-import requests
-from datetime import datetime, timedelta
-from fastapi import FastAPI
-from apscheduler.schedulers.background import BackgroundScheduler
-from contextlib import asynccontextmanager
+from datetime import datetime
+import pytz
 
-# TzCache hatasını susturmak ve performansı artırmak için
-yf.set_tz_cache_location("/tmp/py-yfinance")
+# --- YAPILANDIRMA ---
+TEST_SYMBOLS = ["A1CAP.IS", "A1YEN.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS"]
+ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
-GAS_BASE_URL = "https://script.google.com/macros/s/AKfycbwGYHsm-3umHvyP9aZv1GQV-N1-vv3I91AHVbrucgGCPv79-YTcru_7PV-4b2b80hnz/exec"
-TR_TZ = pytz.timezone("Europe/Istanbul")
-BATCH_SIZE = 50
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
-def get_force_now_str():
-    return os.getenv("FORCE_NOW")
-
-
-def get_now():
-    force_now = get_force_now_str()
-    if force_now:
-        try:
-            naive = datetime.strptime(force_now, "%Y-%m-%d %H:%M")
-            return TR_TZ.localize(naive)
-        except Exception as e:
-            logger.error(f"FORCE_NOW_PARSE_ERR: {e} | value={force_now}")
-    return datetime.now(TR_TZ)
-
-
-def get_time_bucket(dt):
-    minute = (dt.minute // 5) * 5
-    return dt.replace(minute=minute, second=0, microsecond=0).strftime("%H:%M")
-
-
-# =========================
-# COLLECT (fast_info ile - En Güncel Fiyat)
-# =========================
-def collect_job():
-    now = get_now()
+def run_metadata_test():
+    today_date = datetime.now(ISTANBUL_TZ).date()
     
-    # Yarın gerçek kullanımda bu satırı 10:00-10:59 yapmayı unutma
-    if not (now.hour == 10 and 1 <= now.minute <= 59):
-        return
+    print(f"\n--- TEST BAŞLATILDI: {datetime.now(ISTANBUL_TZ).strftime('%Y-%m-%d %H:%M:%S')} ---")
 
-    date_str = now.strftime("%Y-%m-%d")
-    time_bucket = get_time_bucket(now)
-
-    try:
-        symbols = requests.get(
-            f"{GAS_BASE_URL}?action=getSymbols",
-            timeout=15
-        ).json().get("symbols", [])
-
-        start_prices = requests.get(
-            f"{GAS_BASE_URL}?action=getStartPrices&date={date_str}",
-            timeout=15
-        ).json()
-    except Exception as e:
-        logger.error(f"INIT_DATA_ERR: {e}")
-        return
-
-    if not symbols:
-        logger.warning("No symbols found from GAS")
-        return
-
-    for i in range(0, len(symbols), BATCH_SIZE):
-        batch = symbols[i:i + BATCH_SIZE]
-
+    for symbol in TEST_SYMBOLS:
         try:
-            # Tickers nesnesi ile toplu meta veri bağlantısı (Çok hızlıdır)
-            tickers_obj = yf.Tickers(" ".join(batch))
-            rows = []
+            ticker = yf.Ticker(symbol)
+            # KESİN TALİMAT: Sadece history_metadata kullanılıyor.
+            metadata = ticker.history_metadata
+            
+            reg_open = metadata.get("regularMarketOpen")
+            reg_time_epoch = metadata.get("regularMarketTime")
+            tz_name = metadata.get("exchangeTimezoneName")
 
-            for symbol in batch:
-                try:
-                    ticker = tickers_obj.tickers.get(symbol)
-                    if not ticker:
-                        continue
-
-                    # fast_info o anki son fiyatı (lastPrice) bar indirmeden verir
-                    price_val = ticker.fast_info.get("lastPrice")
-                    
-                    if price_val is None or str(price_val) == "nan":
-                        continue
-
-                    price = round(float(price_val), 2)
-                    open_price = start_prices.get(symbol)
-
-                    pct = None
-                    if open_price is not None:
-                        pct = round(
-                            ((price - float(open_price)) / float(open_price)) * 100,
-                            2
-                        )
-
-                    rows.append([symbol, price, pct])
-
-                except Exception as inner_e:
-                    # Tekil sembol hatalarını logla ama döngüyü bozma
-                    logger.debug(f"Error fetching {symbol}: {inner_e}")
-                    continue
-
-            if rows:
-                payload = {
-                    "date": date_str,
-                    "time_bucket": time_bucket,
-                    "rows": rows
-                }
-                response = requests.post(
-                    f"{GAS_BASE_URL}?action=postCollectBatch",
-                    json=payload,
-                    timeout=20
-                )
-                logger.info(f"COLLECT_BATCH_SENT: {len(rows)} | {time_bucket} | Status: {response.status_code}")
-            else:
-                logger.warning(f"Batch {i//BATCH_SIZE + 1} produced no valid rows")
-
-        except Exception as e:
-            logger.error(f"BATCH_ERR: {i} | {e}")
-
-
-# =========================
-# OPEN FETCH
-# =========================
-def open_fetch_job():
-    now = get_now()
-
-    if not (now.hour == 10 and 0 <= now.minute <= 59):
-        return
-
-    date_str = now.strftime("%Y-%m-%d")
-
-    try:
-        symbols = requests.get(
-            f"{GAS_BASE_URL}?action=getSymbols",
-            timeout=15
-        ).json().get("symbols", [])
-
-        start_prices = requests.get(
-            f"{GAS_BASE_URL}?action=getStartPrices&date={date_str}",
-            timeout=15
-        ).json()
-    except Exception as e:
-        logger.error(f"OPEN_INIT_ERR: {e}")
-        return
-
-    if not symbols:
-        return
-
-    missing = [s for s in symbols if s not in start_prices]
-    if not missing:
-        return
-
-    new_rows = []
-
-    for i in range(0, len(missing), BATCH_SIZE):
-        batch = missing[i:i + BATCH_SIZE]
-        try:
-            data = yf.download(
-                batch,
-                period="1d",
-                interval="1d",
-                progress=False,
-                threads=True
-            )
-
-            if data.empty:
+            # --- V1 KATI DOĞRULAMA ---
+            if reg_open is None or reg_open <= 0 or tz_name != "Europe/Istanbul":
+                print(f"SYMBOL: {symbol}\nMETADATA_INVALID (Fiyat veya TZ Hatalı)")
+                print("-" * 32)
                 continue
 
-            for symbol in batch:
-                try:
-                    if len(batch) > 1:
-                        open_val = data["Open"][symbol].iloc[0]
-                    else:
-                        open_val = data["Open"].iloc[0]
+            # Tarih Kontrolü (Bugün değilse yazma)
+            reg_dt = datetime.fromtimestamp(reg_time_epoch, ISTANBUL_TZ)
+            if reg_dt.date() != today_date:
+                print(f"SYMBOL: {symbol}\nSTALE_DATA (Veri henüz bugüne güncellenmemiş)")
+                print("-" * 32)
+                continue
 
-                    if open_val is None or str(open_val) == "nan":
-                        continue
+            # --- TÜM ŞARTLAR OK -> LOG ---
+            print(f"SYMBOL: {symbol}")
+            print(f"OPEN: {reg_open}")
+            print(f"MARKET_TIME_EPOCH: {reg_time_epoch}")
+            print(f"MARKET_TIME_IST: {reg_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"TIMEZONE: {tz_name}")
+            print("-" * 32)
 
-                    new_rows.append([symbol, round(float(open_val), 2)])
-                except Exception:
-                    continue
         except Exception as e:
-            logger.error(f"OPEN_BATCH_ERR: {e}")
+            print(f"SYMBOL: {symbol}\nERROR: {str(e)}")
+            print("-" * 32)
 
-    if not new_rows:
-        return
-
-    try:
-        requests.post(
-            f"{GAS_BASE_URL}?action=postStartPricesBatch",
-            json={"date": date_str, "rows": new_rows},
-            timeout=20
-        )
-        logger.info(f"OPEN_BATCH_SENT: {len(new_rows)}")
-
-        requests.post(
-            f"{GAS_BASE_URL}?action=postBackfillPct",
-            json={"date": date_str},
-            timeout=20
-        )
-        logger.info("BACKFILL_TRIGGERED")
-    except Exception as e:
-        logger.error(f"OPEN_POST_ERR: {e}")
-
-
-# =========================
-# FINAL
-# =========================
-def finalize_job():
-    now = get_now()
-    # Günü kapatma kontrolü
-    if now.hour < 11:
-        return
-
-    date_str = now.strftime("%Y-%m-%d")
-
-    try:
-        requests.post(
-            f"{GAS_BASE_URL}?action=postFinalize",
-            json={"date": date_str},
-            timeout=30
-        )
-        logger.info(f"FINALIZE_SENT: {date_str}")
-    except Exception as e:
-        logger.error(f"FINALIZE_ERR: {e}")
-
-
-# =========================
-# SCHEDULER
-# =========================
-scheduler = BackgroundScheduler(timezone=TR_TZ)
-scheduler.add_job(collect_job, "interval", minutes=5)
-scheduler.add_job(open_fetch_job, "interval", minutes=5)
-scheduler.add_job(finalize_job, "interval", minutes=5)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    if not scheduler.running:
-        scheduler.start()
-    yield
-    scheduler.shutdown()
-
-
-app = FastAPI(lifespan=lifespan)
-
-
-@app.get("/health")
-def health():
-    now = get_now()
-    return {
-        "status": "healthy",
-        "tr_time": now.strftime("%H:%M:%S"),
-        "force_now": get_force_now_str()
-    }
+if __name__ == "__main__":
+    run_metadata_test()
