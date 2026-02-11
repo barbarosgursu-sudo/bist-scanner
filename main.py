@@ -1,14 +1,14 @@
 import yfinance as yf
 from datetime import datetime, timedelta
 import pytz
-import time  # Süre beklemek için eklendi
+import time
 
 # --- KONFİGÜRASYON ---
 TEST_SYMBOLS = ["A1CAP.IS", "A1YEN.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS"]
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 def run_v1_locked():
-    while True:  # SONSUZ DÖNGÜ: Script hiç kapanmaz
+    while True:  # Sonsuz döngü: Script hep uyanık kalır
         now = datetime.now(ISTANBUL_TZ)
         today_date = now.date()
         
@@ -30,7 +30,7 @@ def run_v1_locked():
                 reg_low = meta.get("regularMarketDayLow")
                 reg_price = meta.get("regularMarketPrice")
                 reg_time = meta.get("regularMarketTime")
-                tz_name = meta.get("exchangeTimezoneName")
+                tz_name = meta.get("exchangeTimezoneName")  # Zaman dilimi bilgisi
 
                 if reg_open is None or reg_open <= 0 or tz_name != "Europe/Istanbul":
                     print(f"SYMBOL: {symbol} | STATUS: WAITING_FOR_DATA_OR_CLOSED")
@@ -41,7 +41,8 @@ def run_v1_locked():
                     print(f"SYMBOL: {symbol} | STATUS: STALE_DATA (Eski Tarih: {dt_ist.date()})")
                     continue
 
-                print(f"SYMBOL: {symbol} | OPEN: {reg_open} | HIGH: {reg_high} | LOW: {reg_low} | LAST: {reg_price}")
+                # İstediğin tüm bilgiler tek satırda:
+                print(f"SYMBOL: {symbol} | OPEN: {reg_open} | HIGH: {reg_high} | LOW: {reg_low} | LAST: {reg_price} | TZ: {tz_name}")
 
             except Exception:
                 print(f"SYMBOL: {symbol} | STATUS: ERROR")
@@ -50,7 +51,7 @@ def run_v1_locked():
         print("5 DAKİKA BEKLENİYOR...")
         print("="*40)
         
-        time.sleep(300)  # 300 saniye (5 dakika) uyu ve başa dön
+        time.sleep(300)  # 5 dakika uyu ve döngüyü başa sar
 
 if __name__ == "__main__":
     run_v1_locked()
