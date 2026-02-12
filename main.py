@@ -1,57 +1,115 @@
 import yfinance as yf
 from datetime import datetime
 import pytz
-import time
+import requests
+import json
 
-# --- TEST YAPILANDIRMASI ---
-TEST_SYMBOLS = ["A1CAP.IS", "A1YEN.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS"]
+# ==========================
+# CONFIG
+# ==========================
+
+TEST_MODE = True          # True → hemen çalışır
+RUN_HOUR = 11
+RUN_MINUTE = 15
+
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzBC2sjqio_ejdVAxSBsDjNfiKrCRqH1hCRA8n9Axwlgo-Mv0SqnjikjRUOZ0s4A-w0/exec"
+
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
-def run_v1_timestamp_check():
-    while True:
-        now = datetime.now(ISTANBUL_TZ)
-        today_date = now.date()
-        
-        print(f"\n--- ZAMAN DAMGALI VERİ KONTROLÜ: {now.strftime('%H:%M:%S')} ---")
+SYMBOLS = [
+    # TEST için kısa liste
+    "A1CAP.IS",
+    "A1YEN.IS",
+    "ACSEL.IS",
+    "ADEL.IS",
+    "ADESE.IS"
+]
 
-        for symbol in TEST_SYMBOLS:
-            try:
-                ticker = yf.Ticker(symbol)
-                hist = ticker.history(period="1d")
-                
-                # Yahoo'nun veriyi paketlediği gerçek zaman damgasını alıyoruz
-                meta = ticker.history_metadata
-                market_unix_time = meta.get("regularMarketTime")
-                
-                if hist.empty or market_unix_time is None:
-                    print(f"SYMBOL: {symbol} | STATUS: WAITING (Veri henüz hazır değil)")
-                    continue
+# ==========================
+# MAIN LOGIC
+# ==========================
 
-                # Unix zamanını İstanbul saatine çeviriyoruz
-                market_dt = datetime.fromtimestamp(market_unix_time, ISTANBUL_TZ)
-                
-                # Tarih Kilidi: Sadece bugünün verisiyse işle
-                if market_dt.date() != today_date:
-                    print(f"SYMBOL: {symbol} | STATUS: STALE (Yahoo hala dünü gösteriyor)")
-                    continue
+def should_run_now(now):
+    if TEST_MODE:
+        return True
+    return now.hour == RUN_HOUR and now.minute >= RUN_MINUTE
 
-                # Verileri çekiyoruz
-                open_p = hist['Open'].iloc[0]
-                high_p = hist['High'].iloc[0]
-                low_p = hist['Low'].iloc[0]
-                last_p = hist['Close'].iloc[-1]
 
-                # LOG FORMATI: Market Time (Gecikmeli) ve Run Time (Şu an)
-                print(f"SYMBOL: {symbol} | OPEN: {open_p:.2f} | HIGH: {high_p:.2f} | LOW: {low_p:.2f} | LAST: {last_p:.2f} | "
-                      f"MARKET TIME: {market_dt.strftime('%H:%M:%S')} | "
-                      f"CHECKED AT: {now.strftime('%H:%M:%S')}")
+def fetch_snapshot():
+    now = datetime.now(ISTANBUL_TZ)
+    today_date = now.date()
 
-            except Exception as e:
-                print(f"SYMBOL: {symbol} | HATA: {str(e)}")
+    results = []
 
-        print("-" * 60)
-        print("5 DAKİKA BEKLENİYOR...")
-        time.sleep(300)
+    for symbol in SYMBOLS:
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            meta = ticker.history_metadata
+            market_unix_time = meta.get("regularMarketTime")
+
+            if hist.empty or market_unix_time is None:
+                continue
+
+            market_dt = datetime.fromtimestamp(market_unix_time, ISTANBUL_TZ)
+
+            if market_dt.date() != today_date:
+                continue
+
+            open_p = float(hist['Open'].iloc[0])
+            high_p = float(hist['High'].iloc[0])
+            low_p = float(hist['Low'].iloc[0])
+            last_p = float(hist['Close'].iloc[-1])
+
+            results.append({
+                "symbol": symbol,
+                "open": open_p,
+                "high": high_p,
+                "low": low_p,
+                "last": last_p,
+                "market_time": market_dt.strftime("%H:%M:%S"),
+                "checked_at": now.strftime("%H:%M:%S")
+            })
+
+        except Exception as e:
+            print(f"HATA {symbol}: {str(e)}")
+
+    return {
+        "date": str(today_date),
+        "data": results
+    }
+
+
+def send_to_gas(payload):
+    try:
+        response = requests.post(GAS_ENDPOINT, json=payload, timeout=30)
+        print("GAS RESPONSE:", response.text)
+    except Exception as e:
+        print("POST HATA:", str(e))
+
+
+def main():
+    now = datetime.now(ISTANBUL_TZ)
+
+    if not should_run_now(now):
+        print("Henüz çalışma zamanı değil.")
+        return
+
+    print("Snapshot alınıyor...")
+
+    payload = fetch_snapshot()
+
+    count = len(payload["data"])
+    print(f"{count} hisse alındı.")
+
+    # Debug için JSON göster
+    print(json.dumps(payload, indent=2))
+
+    if count > 0:
+        send_to_gas(payload)
+    else:
+        print("Gönderilecek veri yok.")
+
 
 if __name__ == "__main__":
-    run_v1_timestamp_check()
+    main()
