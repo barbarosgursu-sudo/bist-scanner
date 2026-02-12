@@ -12,7 +12,7 @@ TEST_MODE = True          # True → hemen çalışır
 RUN_HOUR = 11
 RUN_MINUTE = 15
 
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzoaVneYxQ6AMI3QhFzf-cxmvnYQcGmTOq8ghV_ylcA9nFhsDkaPABPLsNCKqugC9Of/exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbyDqR2VFbpfIT-HvEJ1nY7BPYJ0fbEIR6yHKDrx01iWg-1x5SVHdcFG4lymvNrmGrbW/exec"
 
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
