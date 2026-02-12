@@ -6,7 +6,7 @@ import time
 # --- KONFİGÜRASYON ---
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
-# Hazırladığın dev liste:
+# Senin 500+ hisselik listen (Değişmedi)
 SYMBOLS = [
     "A1CAP.IS","A1YEN.IS","ACSEL.IS","ADEL.IS","ADESE.IS","ADGYO.IS","AEFES.IS","AFYON.IS","AGESA.IS","AGHOL.IS",
     "AGROT.IS","AGYO.IS","AHGAZ.IS","AHSGY.IS","AKBNK.IS","AKCNS.IS","AKENR.IS","AKFGY.IS","AKFIS.IS","AKFYE.IS",
@@ -70,20 +70,18 @@ SYMBOLS = [
     "YKSLN.IS","YONGA.IS","YUNSA.IS","YYAPI.IS","YYLGD.IS","ZEDUR.IS","ZERGY.IS","ZGYO.IS","ZOREN.IS","ZRGYO.IS"
 ]
 
-def run_production_batch():
+def run_production_safe():
     while True:
         now = datetime.now(ISTANBUL_TZ)
         today_date = now.date()
         
-        print(f"\n--- BIST BATCH RUN: {now.strftime('%Y-%m-%d %H:%M:%S')} ---")
+        print(f"\n--- BIST BATCH RUN START: {now.strftime('%H:%M:%S')} ---")
         
         try:
-            # TEK SEFERDE TÜM LİSTEYİ İNDİR (threads=True ile süper hız)
+            # Veriyi çek (progress bar ve hataları sessize al)
             data = yf.download(SYMBOLS, period="1d", group_by='ticker', threads=True, progress=False)
 
-            if data.empty:
-                print("HATA: Yahoo'dan veri çekilemedi.")
-            else:
+            if not data.empty:
                 for symbol in SYMBOLS:
                     try:
                         ticker_df = data[symbol] if len(SYMBOLS) > 1 else data
@@ -91,30 +89,22 @@ def run_production_batch():
                         if ticker_df.empty:
                             continue
 
-                        # Açılış Fiyatı ve Tarih Kontrolü
                         reg_open = ticker_df['Open'].iloc[0]
                         
-                        if ticker_df.index[0].date() != today_date:
-                            # Henüz bugünün verisi gelmemişse logu kirletme
-                            continue
+                        # Sadece bugünün verisiyse yazdır
+                        if ticker_df.index[0].date() == today_date:
+                            print(f"SYMBOL: {symbol} | OPEN: {reg_open:.2f}")
+                            # --- KRİTİK: Railway Log Sınırı İçin Bekleme ---
+                            time.sleep(0.02) 
 
-                        # Opsiyonel: Diğer veriler (High/Low)
-                        reg_high = ticker_df['High'].iloc[0]
-                        reg_low = ticker_df['Low'].iloc[0]
-                        reg_last = ticker_df['Close'].iloc[-1]
-
-                        # TERTEMİZ LOG ÇIKTISI
-                        print(f"SYMBOL: {symbol} | OPEN: {reg_open:.2f} | HIGH: {reg_high:.2f} | LOW: {reg_low:.2f} | LAST: {reg_last:.2f} | TIME: {now.strftime('%H:%M:%S')}")
-
-                    except Exception:
-                        continue # Bazı semboller boş dönerse döngüyü bozma
-
+                    except:
+                        continue
         except Exception as e:
-            print(f"GENEL HATA: {str(e)}")
+            print(f"HATA: {str(e)}")
 
-        print("-" * 40)
-        print("BİR SONRAKİ TOPLU KONTROL: 5 DAKİKA SONRA...")
+        print(f"\n--- BIST BATCH RUN END: {datetime.now(ISTANBUL_TZ).strftime('%H:%M:%S')} ---")
+        print("5 DAKİKA BEKLENİYOR...")
         time.sleep(300)
 
 if __name__ == "__main__":
-    run_production_batch()
+    run_production_safe()
