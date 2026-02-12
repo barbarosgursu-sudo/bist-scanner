@@ -7,7 +7,7 @@ import time
 TEST_SYMBOLS = ["A1CAP.IS", "A1YEN.IS", "ACSEL.IS", "ADEL.IS", "ADESE.IS"]
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
-def run_v1_minimal():
+def run_v1_direct_open():
     while True:
         now = datetime.now(ISTANBUL_TZ)
         today_date = now.date()
@@ -17,26 +17,24 @@ def run_v1_minimal():
         for symbol in TEST_SYMBOLS:
             try:
                 ticker = yf.Ticker(symbol)
-                # Sadece metadata katmanına bakıyoruz
-                meta = ticker.history_metadata
+                # '1d' periyodu o günün açılışını içeren ilk satırı getirir
+                hist = ticker.history(period="1d")
                 
-                reg_open = meta.get("regularMarketOpen")
-                reg_time = meta.get("regularMarketTime")
-                tz_name = meta.get("exchangeTimezoneName")
-
-                # KONTROL 1: Veri geldi mi?
-                if reg_open is None or reg_open <= 0:
-                    print(f"SYMBOL: {symbol} | STATUS: WAITING (Açılış fiyatı henüz tescil edilmedi)")
+                # Eğer tablo boşsa Yahoo henüz bugünün verisini API'ye açmamıştır
+                if hist.empty:
+                    print(f"SYMBOL: {symbol} | STATUS: WAITING (Yahoo API henüz veri akışını başlatmadı)")
                     continue
 
-                # KONTROL 2: Gelen veri bugüne mi ait?
-                dt_ist = datetime.fromtimestamp(reg_time, ISTANBUL_TZ)
-                if dt_ist.date() != today_date:
-                    print(f"SYMBOL: {symbol} | STATUS: STALE (Yahoo hala dünün verisini tutuyor)")
+                # Tablodaki İLK satırın 'Open' değeri o günün gerçek açılış fiyatıdır.
+                reg_open = hist['Open'].iloc[0]
+                
+                # Tarih kontrolü: Tablodaki ilk satır bugüne mi ait?
+                if hist.index[0].date() != today_date:
+                    print(f"SYMBOL: {symbol} | STATUS: STALE (Veri hala düne ait: {hist.index[0].date()})")
                     continue
 
-                # BAŞARILI LOG: Sadece açılış fiyatı
-                print(f"SYMBOL: {symbol} | AÇILIŞ: {reg_open} | SAAT: {dt_ist.strftime('%H:%M:%S')} | TZ: {tz_name}")
+                # BAŞARILI LOG
+                print(f"SYMBOL: {symbol} | AÇILIŞ: {reg_open:.2f} | SAAT: {hist.index[0].strftime('%H:%M:%S')}")
 
             except Exception as e:
                 print(f"SYMBOL: {symbol} | HATA: {str(e)}")
@@ -46,4 +44,4 @@ def run_v1_minimal():
         time.sleep(300)
 
 if __name__ == "__main__":
-    run_v1_minimal()
+    run_v1_direct_open()
