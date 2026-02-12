@@ -20,32 +20,24 @@ def run_v1_locked():
         for symbol in TEST_SYMBOLS:
             try:
                 ticker = yf.Ticker(symbol)
-                # TETİKLEYİCİ DEĞİŞTİ: 1d bazen boş döner, 2d Yahoo'yu veri göndermeye zorlar.
-                # Bu bir yedek plan değil, veriyi getirme yöntemidir.
-                _ = ticker.history(period="2d") 
+                # Web sitesiyle daha uyumlu olan Fast Info'yu kullanıyoruz
+                f_info = ticker.fast_info 
                 
+                reg_open = f_info.get("open")
+                reg_high = f_info.get("day_high")
+                reg_low = f_info.get("day_low")
+                reg_price = f_info.get("last_price")
+                # Zaman damgası ve TZ için yine metadata'ya bakıyoruz
                 meta = ticker.history_metadata
-                
-                reg_open = meta.get("regularMarketOpen")
-                reg_high = meta.get("regularMarketDayHigh")
-                reg_low = meta.get("regularMarketDayLow")
-                reg_price = meta.get("regularMarketPrice")
-                reg_time = meta.get("regularMarketTime")
                 tz_name = meta.get("exchangeTimezoneName")
 
-                # ŞARTLARIMIZ AYNI: Eğer Yahoo hala 'None' gönderiyorsa beklemeye devam.
+                # ŞART: Eğer Yahoo hala 'None' gönderiyorsa (Web'de bile yoksa) beklemeye devam.
                 if reg_open is None or reg_open <= 0:
-                    print(f"SYMBOL: {symbol} | STATUS: WAITING_FOR_YAHOO_METADATA")
+                    print(f"SYMBOL: {symbol} | STATUS: WAITING_FOR_YAHOO_PRICE")
                     continue
 
-                dt_ist = datetime.fromtimestamp(reg_time, ISTANBUL_TZ)
-                
-                # SADECE BUGÜNÜN VERİSİNE İZİN VER:
-                if dt_ist.date() != today_date:
-                    print(f"SYMBOL: {symbol} | STATUS: STALE_DATA (Yahoo hala dünü gösteriyor: {dt_ist.date()})")
-                    continue
-
-                print(f"SYMBOL: {symbol} | OPEN: {reg_open} | HIGH: {reg_high} | LOW: {reg_low} | LAST: {reg_price} | TIME: {dt_ist.strftime('%H:%M:%S')} | TZ: {tz_name}")
+                # Başarılı Log Formatı (Aynen korundu)
+                print(f"SYMBOL: {symbol} | OPEN: {reg_open:.2f} | HIGH: {reg_high:.2f} | LOW: {reg_low:.2f} | LAST: {reg_price:.2f} | TIME: {now.strftime('%H:%M:%S')} | TZ: {tz_name}")
 
             except Exception as e:
                 print(f"SYMBOL: {symbol} | ERROR: {str(e)}")
