@@ -2,7 +2,6 @@ import yfinance as yf
 from datetime import datetime
 import pytz
 import requests
-import json
 
 # ==========================
 # CONFIG
@@ -17,7 +16,6 @@ GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzyB7tswjwRhLiR7OWI95Vtb
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 SYMBOLS = [
-    # TEST için kısa liste
     "A1CAP.IS",
     "A1YEN.IS",
     "ACSEL.IS",
@@ -71,8 +69,8 @@ def fetch_snapshot():
                 "checked_at": now.strftime("%H:%M:%S")
             })
 
-        except Exception as e:
-            print(f"HATA {symbol}: {str(e)}")
+        except Exception:
+            pass  # Sessiz geç
 
     return {
         "date": str(today_date),
@@ -92,23 +90,17 @@ def main():
     now = datetime.now(ISTANBUL_TZ)
 
     if not should_run_now(now):
-        print("Henüz çalışma zamanı değil.")
         return
 
     print("Snapshot alınıyor...")
 
     payload = fetch_snapshot()
-
     count = len(payload["data"])
-    print(f"{count} hisse alındı.")
 
-    # Debug için JSON göster
-    print(json.dumps(payload, indent=2))
+    print(f"{count} hisse alındı.")
 
     if count > 0:
         send_to_gas(payload)
-    else:
-        print("Gönderilecek veri yok.")
 
 
 if __name__ == "__main__":
