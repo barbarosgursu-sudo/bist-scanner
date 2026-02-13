@@ -13,7 +13,7 @@ TEST_MODE = True
 RUN_HOUR = 11
 RUN_MINUTE = 15
 
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbz4vaW2CnFJGMosWZRLcuGCCofHAaoW8VQeK-Zie_YJti1KLIv2JOhNmm5Knlgrc_ao/exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzKP1QzfYDIprTSwd1ZdhrJp-M-y3FPXHLCshaSvxANyrp0bPqAqigONWgNIokxI6IG/exec"
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 # Sembol listesi aynı kalıyor...
