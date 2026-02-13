@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 # ==========================
 # CONFIG
 # ==========================
-TEST_MODE = False           
+TEST_MODE = True           
 RUN_HOUR = 11
 RUN_MINUTE = 15
 
