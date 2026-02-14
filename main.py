@@ -1,4 +1,4 @@
-import yfinance as yf
+import yfianance as yf
 from datetime import datetime
 import pytz
 import requests
@@ -59,7 +59,8 @@ def run_live_tracker():
         print(f"[{now.strftime('%H:%M:%S')}] {len(active_symbols)} aktif hisse guncelleniyor...")
 
         # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
-        data = yf.download(active_symbols, period="5d", group_by='ticker', threads=True, progress=False)
+        # MultiIndex hatasını engellemek için group_by='ticker' kaldırıldı.
+        data = yf.download(active_symbols, period="5d", threads=True, progress=False)
         
         # DEBUG: Veri geldi mi gelmedi mi terminalde görelim
         if data.empty:
@@ -68,12 +69,21 @@ def run_live_tracker():
         updates = []
         for symbol in active_symbols:
             try:
-                ticker_df = data[symbol] if len(active_symbols) > 1 else data
-                if ticker_df.empty: 
+                # Veri sütunlarına hem tekli hem çoklu sembol durumunda güvenli erişim
+                if len(active_symbols) > 1:
+                    ticker_close = data['Close'][symbol]
+                    ticker_high = data['High'][symbol]
+                    ticker_low = data['Low'][symbol]
+                else:
+                    ticker_close = data['Close']
+                    ticker_high = data['High']
+                    ticker_low = data['Low']
+
+                if ticker_close.empty: 
                     print(f"UYARI: {symbol} tablosu bos!")
                     continue
                 
-                last_p = ticker_df['Close'].iloc[-1]
+                last_p = ticker_close.iloc[-1]
                 
                 # DEBUG: Son fiyat bulundu mu?
                 print(f"DEBUG: {symbol} son fiyat bulundu: {last_p}")
@@ -82,8 +92,8 @@ def run_live_tracker():
                     updates.append({
                         "symbol": symbol,
                         "last": float(last_p),
-                        "high": float(ticker_df['High'].max()),
-                        "low": float(ticker_df['Low'].min()),
+                        "high": float(ticker_high.max()),
+                        "low": float(ticker_low.min()),
                         "time": now.strftime("%H:%M:%S")
                     })
             except Exception as e:
