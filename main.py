@@ -59,7 +59,7 @@ def run_live_tracker():
         print(f"[{now.strftime('%H:%M:%S')}] {len(active_symbols)} aktif hisse guncelleniyor...")
 
         # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
-        data = yf.download(active_symbols, period="5d", threads=True, progress=False)
+        data = yf.download(active_symbols, period="1d", threads=True, progress=False)
         
         if data.empty:
             print(f"HATA: yfinance '{active_symbols}' icin hic veri dondurmedi!")
