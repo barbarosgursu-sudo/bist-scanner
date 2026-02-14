@@ -15,7 +15,7 @@ RUN_MINUTE = 15
 TRACK_END_HOUR = 17
 TRACK_END_MINUTE = 55
 
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxh-dHRBPmVm_m5ywRGlMDT4F8zMMmCED4B0cQ9suP0lxQW6M0xpF2OL9PKtf-afnPT/exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzZcD4VEDUoJvCt6Z972nyegbLTEibto1PBUtnJCm7zGpPHbmoQJf-nYOdZfvXuEGTV/exec"
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 # Sembol listesi
@@ -159,11 +159,11 @@ def main():
         weekday = now.weekday() # 0=Pazartesi, 4=Cuma, 5=Cumartesi, 6=Pazar
 
         # HAFTA SONU KORUMASI
-        if weekday >= 5:
-            if now.hour == 10 and now.minute == 0:
-                print(f"[{now.strftime('%d.%m.%Y')}] Hafta sonu: BIS Intraday Scanner beklemede.")
-            time.sleep(3600)
-            continue
+        # if weekday >= 5:
+        #     if now.hour == 10 and now.minute == 0:
+        #         print(f"[{now.strftime('%d.%m.%Y')}] Hafta sonu: BIS Intraday Scanner beklemede.")
+        #     time.sleep(3600)
+        #     continue
 
         current_total_minutes = now.hour * 60 + now.minute
         start_min = RUN_HOUR * 60 + RUN_MINUTE
