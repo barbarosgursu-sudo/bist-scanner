@@ -61,14 +61,14 @@ def run_live_tracker():
         # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
         data = yf.download(active_symbols, period="5d", threads=True, progress=False)
         
-        # DEBUG: Veri geldi mi gelmedi mi terminalde görelim
         if data.empty:
             print(f"HATA: yfinance '{active_symbols}' icin hic veri dondurmedi!")
+            return
         
         updates = []
         for symbol in active_symbols:
             try:
-                # Veri sütunlarına hem tekli hem çoklu sembol durumunda güvenli erişim
+                # Veri sütunlarına erişim
                 if len(active_symbols) > 1:
                     ticker_close = data['Close'][symbol]
                     ticker_high = data['High'][symbol]
@@ -78,21 +78,26 @@ def run_live_tracker():
                     ticker_high = data['High']
                     ticker_low = data['Low']
 
-                if ticker_close.empty: 
-                    print(f"UYARI: {symbol} tablosu bos!")
-                    continue
+                if ticker_close.empty: continue
                 
-                last_p = ticker_close.iloc[-1]
+                # ZIRHLI VERİ ÇEKİMİ: Değerleri doğrudan float'a zorla
+                raw_last = ticker_close.iloc[-1]
+                last_p = float(raw_last.iloc[0] if hasattr(raw_last, "iloc") else raw_last)
                 
-                # DEBUG: Son fiyat bulundu mu?
-                print(f"DEBUG: {symbol} son fiyat bulundu: {last_p}")
+                raw_high = ticker_high.max()
+                high_p = float(raw_high.iloc[0] if hasattr(raw_high, "iloc") else raw_high)
+                
+                raw_low = ticker_low.min()
+                low_p = float(raw_low.iloc[0] if hasattr(raw_low, "iloc") else raw_low)
+
+                print(f"DEBUG: {symbol} fiyat yakalandi: {last_p}")
 
                 if not math.isnan(last_p):
                     updates.append({
                         "symbol": symbol,
-                        "last": float(last_p),
-                        "high": float(ticker_high.max()),
-                        "low": float(ticker_low.min()),
+                        "last": last_p,
+                        "high": high_p,
+                        "low": low_p,
                         "time": now.strftime("%H:%M:%S")
                     })
             except Exception as e:
