@@ -61,31 +61,41 @@ def run_live_tracker():
         # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
         data = yf.download(active_symbols, period="5d", group_by='ticker', threads=True, progress=False)
         
+        # DEBUG: Veri geldi mi gelmedi mi terminalde görelim
+        if data.empty:
+            print(f"HATA: yfinance '{active_symbols}' icin hic veri dondurmedi!")
+        
         updates = []
         for symbol in active_symbols:
             try:
                 ticker_df = data[symbol] if len(active_symbols) > 1 else data
-                if ticker_df.empty: continue
+                if ticker_df.empty: 
+                    print(f"UYARI: {symbol} tablosu bos!")
+                    continue
                 
                 last_p = ticker_df['Close'].iloc[-1]
-                high_p = ticker_df['High'].max()
-                low_p = ticker_df['Low'].min()
+                
+                # DEBUG: Son fiyat bulundu mu?
+                print(f"DEBUG: {symbol} son fiyat bulundu: {last_p}")
 
                 if not math.isnan(last_p):
                     updates.append({
                         "symbol": symbol,
                         "last": float(last_p),
-                        "high": float(high_p),
-                        "low": float(low_p),
+                        "high": float(ticker_df['High'].max()),
+                        "low": float(ticker_df['Low'].min()),
                         "time": now.strftime("%H:%M:%S")
                     })
-            except:
+            except Exception as e:
+                print(f"ISLEME HATASI ({symbol}): {str(e)}")
                 continue
 
         # 3. Güncel fiyatları GAS'a gönder
         if updates:
             print(f"[{now.strftime('%H:%M:%S')}] {len(updates)} hisse guncellemesi GAS'a gonderiliyor...")
             requests.post(GAS_ENDPOINT, json={"type": "UPDATE_LIVE_PRICES", "data": updates}, timeout=30)
+        else:
+            print("Gonderilecek guncelleme verisi olusmadi (updates listesi bos).")
 
     except Exception as e:
         print(f"TRACKER HATA: {str(e)}")
