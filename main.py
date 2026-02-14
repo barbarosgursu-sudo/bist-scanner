@@ -15,7 +15,7 @@ RUN_MINUTE = 15
 TRACK_END_HOUR = 17
 TRACK_END_MINUTE = 55
 
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzZcD4VEDUoJvCt6Z972nyegbLTEibto1PBUtnJCm7zGpPHbmoQJf-nYOdZfvXuEGTV/exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxSe-reEHnkpBWyX_Ge_bp_uRAlhdntmpqiVlWJXww1NZ2kwEFkBDgJFqo1xt6p2qY/exec"
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 # Sembol listesi
