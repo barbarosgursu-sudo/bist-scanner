@@ -1,4 +1,4 @@
-import yfianance as yf
+import yfinance as yf
 from datetime import datetime
 import pytz
 import requests
@@ -59,7 +59,6 @@ def run_live_tracker():
         print(f"[{now.strftime('%H:%M:%S')}] {len(active_symbols)} aktif hisse guncelleniyor...")
 
         # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
-        # MultiIndex hatasını engellemek için group_by='ticker' kaldırıldı.
         data = yf.download(active_symbols, period="5d", threads=True, progress=False)
         
         # DEBUG: Veri geldi mi gelmedi mi terminalde görelim
