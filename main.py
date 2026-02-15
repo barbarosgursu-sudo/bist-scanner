@@ -184,11 +184,11 @@ def main():
         weekday = now.weekday() # 0=Pazartesi, 4=Cuma, 5=Cumartesi, 6=Pazar
 
         # HAFTA SONU KORUMASI
-        # if weekday >= 5:
-        #      if now.hour == 10 and now.minute == 0:
-        #          print(f"[{now.strftime('%d.%m.%Y')}] Hafta sonu: BIS Intraday Scanner beklemede.")
-        #      time.sleep(3600)
-        #      continue
+        if weekday >= 5:
+             if now.hour == 10 and now.minute == 0:
+                 print(f"[{now.strftime('%d.%m.%Y')}] Hafta sonu: BIS Intraday Scanner beklemede.")
+             time.sleep(3600)
+             continue
 
         current_total_minutes = now.hour * 60 + now.minute
         start_min = RUN_HOUR * 60 + RUN_MINUTE
