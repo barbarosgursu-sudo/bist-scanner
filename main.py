@@ -58,8 +58,8 @@ def run_live_tracker():
 
         print(f"[{now.strftime('%H:%M:%S')}] {len(active_symbols)} aktif hisse guncelleniyor...")
 
-        # 2. Sadece aktif hisselerin verilerini çek (Test için period="5d")
-        data = yf.download(active_symbols, period="1d", threads=True, progress=False)
+        # 2. Sadece aktif hisselerin verilerini çek
+        data = yf.download(active_symbols, period="1d", interval="1m", threads=True, progress=False)
         
         if data.empty:
             print(f"HATA: yfinance '{active_symbols}' icin hic veri dondurmedi!")
@@ -68,27 +68,23 @@ def run_live_tracker():
         updates = []
         for symbol in active_symbols:
             try:
-                # Veri sütunlarına erişim
+                # Veri sütunlarına erişim ve temizleme
                 if len(active_symbols) > 1:
-                    ticker_close = data['Close'][symbol]
-                    ticker_high = data['High'][symbol]
-                    ticker_low = data['Low'][symbol]
+                    ticker_close = data['Close'][symbol].dropna()
+                    ticker_high = data['High'][symbol].dropna()
+                    ticker_low = data['Low'][symbol].dropna()
                 else:
-                    ticker_close = data['Close']
-                    ticker_high = data['High']
-                    ticker_low = data['Low']
+                    ticker_close = data['Close'].dropna()
+                    ticker_high = data['High'].dropna()
+                    ticker_low = data['Low'].dropna()
 
-                if ticker_close.empty: continue
+                if ticker_close.empty:
+                    continue
                 
-                # ZIRHLI VERİ ÇEKİMİ: Değerleri doğrudan float'a zorla
-                raw_last = ticker_close.iloc[-1]
-                last_p = float(raw_last.iloc[0] if hasattr(raw_last, "iloc") else raw_last)
-                
-                raw_high = ticker_high.max()
-                high_p = float(raw_high.iloc[0] if hasattr(raw_high, "iloc") else raw_high)
-                
-                raw_low = ticker_low.min()
-                low_p = float(raw_low.iloc[0] if hasattr(raw_low, "iloc") else raw_low)
+                # Değerleri doğrudan hesapla
+                last_p = float(ticker_close.iloc[-1])
+                high_p = float(ticker_high.max())
+                low_p = float(ticker_low.min())
 
                 print(f"DEBUG: {symbol} fiyat yakalandi: {last_p}")
 
@@ -103,6 +99,14 @@ def run_live_tracker():
             except Exception as e:
                 print(f"ISLEME HATASI ({symbol}): {str(e)}")
                 continue
+
+        # 3. Güncel fiyatları GAS'a gönder
+        if updates:
+            print(f"[{now.strftime('%H:%M:%S')}] {len(updates)} hisse guncellemesi GAS'a gonderiliyor...")
+            requests.post(GAS_ENDPOINT, json={"type": "UPDATE_LIVE_PRICES", "data": updates}, timeout=30)
+
+    except Exception as e:
+        print(f"TRACKER HATA: {str(e)}")
 
         # 3. Güncel fiyatları GAS'a gönder
         if updates:
