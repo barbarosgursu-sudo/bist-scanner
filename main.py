@@ -129,10 +129,13 @@ def fetch_snapshot_precision():
         for symbol in SYMBOLS:
             try:
                 ticker_df = all_data[symbol] if len(SYMBOLS) > 1 else all_data
-                if ticker_df.empty or ticker_df.index[0].date() != today_date: continue
-                open_p = float(ticker_df['Open'].iloc[0])
-                high_p = float(ticker_df['High'].iloc[0])
-                low_p = float(ticker_df['Low'].iloc[0])
+                # Paket içindeki EN SON satır bugüne mi ait kontrolü
+                if ticker_df.empty or ticker_df.index[-1].date() != today_date: continue
+
+                # Fiyatları bugüne ait olan en son satırdan (index -1) çekiyoruz
+                open_p = float(ticker_df['Open'].iloc[-1])
+                high_p = float(ticker_df['High'].iloc[-1])
+                low_p = float(ticker_df['Low'].iloc[-1])
                 last_p = float(ticker_df['Close'].iloc[-1])
                 if any(math.isnan(x) for x in [open_p, high_p, low_p, last_p]): continue
                 results.append({
