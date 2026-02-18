@@ -123,7 +123,7 @@ def fetch_snapshot_precision():
                 if m_time_str: symbol_times[sym] = m_time_str
 
         print(f"DEBUG: Yahoo'dan indirilen toplam veri boyutu: {len(all_data)}")
-        print(f"DEBUG: Yahoo'dan gelen ilk veri tarihi: {all_data.index[0].date()} | Beklenen: {today_date}")
+
         if all_data.empty: return None
 
         for symbol in SYMBOLS:
