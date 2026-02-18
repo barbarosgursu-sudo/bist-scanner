@@ -112,6 +112,7 @@ def fetch_snapshot_precision():
     now = datetime.now(ISTANBUL_TZ)
     today_date = now.date()
     results = []
+    print(f"DEBUG: Tarama basladi. Hedef Tarih: {today_date}")
     try:
         all_data = yf.download(SYMBOLS, period="1d", group_by='ticker', threads=True, progress=False)
         symbol_times = {}
@@ -121,6 +122,7 @@ def fetch_snapshot_precision():
                 sym, m_time_str = future.result()
                 if m_time_str: symbol_times[sym] = m_time_str
 
+        print(f"DEBUG: Yahoo'dan indirilen toplam veri boyutu: {len(all_data)}")
         if all_data.empty: return None
 
         for symbol in SYMBOLS:
@@ -141,12 +143,17 @@ def fetch_snapshot_precision():
             except: continue
     except Exception as e:
         print(f"GENEL HATA: {str(e)}")
+    print(f"DEBUG: Filtrelerden gecen uygun hisse sayisi: {len(results)}")
     return {"date": str(today_date), "data": results}
 
 def send_to_gas(payload):
+    print(f"DEBUG: GAS'a gonderim deneniyor... Adet: {len(payload['data'])}")
     try:
-        requests.post(GAS_ENDPOINT, json=payload, timeout=60)
-    except: pass
+        response = requests.post(GAS_ENDPOINT, json=payload, timeout=60)
+        print(f"DEBUG: GAS Durum Kodu: {response.status_code}")
+        print(f"DEBUG: GAS Yaniti: {response.text}")
+    except Exception as e:
+        print(f"DEBUG: GAS'a gonderirken HATA: {str(e)}")
 
 def main():
     while True:
