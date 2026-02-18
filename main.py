@@ -9,13 +9,13 @@ from concurrent.futures import ThreadPoolExecutor
 # ==========================
 # CONFIG
 # ==========================
-TEST_MODE = False            
+TEST_MODE = True            
 RUN_HOUR = 11
 RUN_MINUTE = 15
 TRACK_END_HOUR = 17
 TRACK_END_MINUTE = 55
 
-GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzynT9ph7ix5DoP_XD5QQCw_7S5EI0HlXcjuMaADFDNw3Hec-gf8GgI1OhURB3XPYei/exec"
+GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxz-Bf3urN4gDQB50-TAnjIa4qS-lAEow4kK_KXdJCyXjxrU-ujUYTqTOo7oZ8zPFFc/exec"
 ISTANBUL_TZ = pytz.timezone("Europe/Istanbul")
 
 SYMBOLS = [
